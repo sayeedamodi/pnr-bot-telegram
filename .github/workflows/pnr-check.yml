@@ -26,3 +26,4 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CHAT_ID_VALIDATION: ${{ secrets.CHAT_ID_VALIDATION }}
