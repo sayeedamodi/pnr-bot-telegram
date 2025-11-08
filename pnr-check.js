@@ -2,7 +2,7 @@ import puppeteer from "puppeteer";
 import fetch from "node-fetch";
 
 // ⚙️ Configuration
-const PNR = "8928583873"; // 👈 Hardcode your PNR number here
+const PNR = "8928583873"; // Hardcode your PNR number
 const URL = `https://www.confirmtkt.com/pnr-status/${PNR}`;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
@@ -16,34 +16,41 @@ async function checkPNR() {
   });
 
   const page = await browser.newPage();
-  await page.goto(URL, { waitUntil: "networkidle2", timeout: 60000 });
+  await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  const pnrData = await page.evaluate(() => {
-    const text = document.body.innerText;
-    const lines = text.split("\n").map(x => x.trim()).filter(Boolean);
+  // ✅ Wait for PNR status text to appear
+  try {
+    await page.waitForSelector("body", { timeout: 30000 });
 
-    const train = lines.find(x => x.match(/\d{5} - /)) || "";
-    const passengerStatus = lines.find(x => x.includes("Chance") || x.includes("CNF") || x.includes("WL")) || "";
-    const bookingStatus = lines.find(x => x.includes("Booking Status")) || "";
-    const chart = lines.find(x => x.toLowerCase().includes("chart")) || "";
+    const result = await page.evaluate(() => {
+      const text = document.body.innerText;
 
-    return { train, passengerStatus, bookingStatus, chart };
-  });
+      const pnrMatch = text.match(/PNR\s*:\s*(\d{10})/i);
+      const trainMatch = text.match(/\d{5}\s*-\s*[A-Z\s]+/i);
+      const passengerMatch = text.match(/GNWL.*Chance|CNF|RAC.*/i);
+      const bookingMatch = text.match(/Booking Status\s*\|\s*(.*?)\s*\|/i);
+      const chartMatch = text.match(/Chart.*(Prepared|not prepared)/i);
 
-  await browser.close();
+      return {
+        pnr: pnrMatch ? pnrMatch[1] : null,
+        train: trainMatch ? trainMatch[0] : null,
+        passengerStatus: passengerMatch ? passengerMatch[0] : null,
+        bookingStatus: bookingMatch ? bookingMatch[1] : null,
+        chart: chartMatch ? chartMatch[0] : "Chart status unavailable",
+      };
+    });
 
-  const message = `🚆 *PNR Status Update*\n
-*PNR:* ${PNR}
-*Train:* ${pnrData.train || "N/A"}
-*Passenger:* ${pnrData.passengerStatus || "N/A"}
-*Booking:* ${pnrData.bookingStatus || "N/A"}
-*Chart:* ${pnrData.chart || "N/A"}
+    const message = `🚆 *PNR Status Update*\n
+*PNR:* ${result.pnr || PNR}
+*Train:* ${result.train || "N/A"}
+*Passenger:* ${result.passengerStatus || "N/A"}
+*Booking:* ${result.bookingStatus || "N/A"}
+*Chart:* ${result.chart || "N/A"}
 ⏰ ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
 
-  console.log(message);
+    console.log(message);
 
-  if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    try {
+    if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,11 +61,14 @@ async function checkPNR() {
         }),
       });
       console.log("✅ Sent to Telegram");
-    } catch (err) {
-      console.error("⚠️ Failed to send Telegram message:", err);
+    } else {
+      console.log("⚠️ Telegram not configured — skipping message send.");
     }
-  } else {
-    console.log("⚠️ Telegram not configured — skipping message send.");
+
+  } catch (err) {
+    console.error("❌ Error extracting data:", err);
+  } finally {
+    await browser.close();
   }
 }
 
