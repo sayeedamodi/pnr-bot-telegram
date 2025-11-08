@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node pnr-auto-check.js"
+    "start": "node pnr-check.js"
   },
   "dependencies": {
     "puppeteer": "^23.3.0",
